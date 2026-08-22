@@ -231,6 +231,8 @@ ExternalProject_Add(llvm-build
     # Pass `-s` to strip symbols by default and shrink the size of the
     # distribution
     -DCMAKE_EXE_LINKER_FLAGS=-s
+    # Limit parallel link jobs to prevent OOM (LLVM linking uses ~4-6GB per job)
+    -DLLVM_PARALLEL_LINK_JOBS=2
     # Looks to be required on macOS for, at build time, the dynamic linker to
     # find `libedit.dylib` when that's enabled.
     -DCMAKE_BUILD_RPATH=${wasi_tmp_install}/lib

@@ -88,6 +88,7 @@ function(define_compiler_rt target)
         -DCOMPILER_RT_BUILD_ORC=OFF
         -DCOMPILER_RT_BUILD_GWP_ASAN=OFF
         -DCMAKE_C_COMPILER_TARGET=${target}
+        -DCMAKE_ASM_COMPILER_TARGET=${target}
         -DCMAKE_C_FLAGS=${WASI_SDK_CPU_CFLAGS}
         -DCMAKE_CXX_FLAGS=${WASI_SDK_CPU_CFLAGS}
         -DCMAKE_ASM_FLAGS=${WASI_SDK_CPU_CFLAGS}
@@ -107,6 +108,7 @@ endfunction()
 define_compiler_rt(wasm32-wasip1)
 define_compiler_rt(wasm32-wasip1-threads)
 define_compiler_rt(wasm64-wasip1)
+define_compiler_rt(wasm64-wasip1-threads)
 
 # If a p3 target is requested, also build compiler-rt for that target. WASIp3
 # will eventually have a different ABI than wasm32-wasip2, so this separate
@@ -141,6 +143,9 @@ add_custom_target(compiler-rt-post-build
 
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${wasi_resource_dir}/lib/wasm64-unknown-wasip1 ${wasi_resource_dir}/lib/wasm64-unknown-wasi
+  # Copy wasm64-threads builtins for alternative OS-string lookup
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${wasi_resource_dir}/lib/wasm64-unknown-wasip1-threads ${wasi_resource_dir}/lib/wasm64-unknown-wasi-threads
 
   COMMENT "finalizing compiler-rt installation"
 )
@@ -171,7 +176,11 @@ function(define_wasi_libc_sub target target_suffix lto)
 
   list(JOIN extra_cflags_list " " extra_cflags)
 
-  if(${target} MATCHES threads)
+  # Determine compiler-rt builtins path based on target
+  # Order matters: check wasm64+threads first since it matches both patterns
+  if(${target} MATCHES wasm64 AND ${target} MATCHES threads)
+    set(libcompiler_rt_a ${wasi_resource_dir}/lib/wasm64-unknown-wasip1-threads/libclang_rt.builtins.a)
+  elseif(${target} MATCHES threads)
     set(libcompiler_rt_a ${wasi_resource_dir}/lib/wasm32-unknown-wasip1-threads/libclang_rt.builtins.a)
   elseif(${target} MATCHES wasm64)
     set(libcompiler_rt_a ${wasi_resource_dir}/lib/wasm64-unknown-wasip1/libclang_rt.builtins.a)
@@ -185,6 +194,20 @@ function(define_wasi_libc_sub target target_suffix lto)
   # libraries as well since that's not currently supported.
   if (lto)
     list(APPEND extra_cmake_args -DLTO=full -DBUILD_SHARED=OFF)
+  endif()
+
+  # wasm64: never build shared libraries, LTO or not.
+  #
+  # Linking libc.so runs the output through wasm-opt, which cannot parse a
+  # 64-bit table ("Tables may not be 64-bit") as of binaryen 128, so the link
+  # fails outright. Only the LTO variant of each target got BUILD_SHARED=OFF
+  # above, so a from-scratch build still tried to produce a wasm64 libc.so and
+  # died there. Nothing in this SDK consumes a wasm64 libc.so — its consumers
+  # link everything statically — so turn it off for the whole architecture.
+  #
+  # Revisit if binaryen gains 64-bit table support.
+  if(${target} MATCHES wasm64)
+    list(APPEND extra_cmake_args -DBUILD_SHARED=OFF)
   endif()
 
   ExternalProject_Add(wasi-libc-${target}${target_suffix}-build
@@ -239,6 +262,10 @@ function(define_libcxx_sub target target_suffix extra_target_flags extra_libdir_
     set(target_flags "")
   endif()
   if(${target_suffix} MATCHES lto)
+    set(pic OFF)
+  endif()
+  # Disable shared libs for wasm64 - not needed and causes build issues
+  if(${target} MATCHES wasm64)
     set(pic OFF)
   endif()
   list(APPEND target_flags ${extra_target_flags})
