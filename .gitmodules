@@ -6,4 +6,4 @@
 	url = https://git.savannah.gnu.org/git/config.git
 [submodule "src/wasi-libc"]
 	path = src/wasi-libc
-	url = https://github.com/yagehu/wasi-libc.git
+	url = https://github.com/MGunlogson/wasi-libc-wasm64.git
