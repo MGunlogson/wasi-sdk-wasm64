@@ -1,0 +1,17 @@
+diff --git a/lld/wasm/Writer.cpp b/lld/wasm/Writer.cpp
+index 1651134..0a1fbc8 100644
+--- a/lld/wasm/Writer.cpp
++++ b/lld/wasm/Writer.cpp
+@@ -463,9 +463,10 @@ void Writer::layoutMemory() {
+ 
+   uint64_t maxMemorySetting = 1ULL << 32;
+   if (ctx.arg.is64.value_or(false)) {
+-    // TODO: Update once we decide on a reasonable limit here:
++    // Upstream caps this at 16 GiB, the limit V8 and SpiderMonkey impose. Raised
++    // to 256 GiB for runtimes without that limit, such as wasmtime.
+     // https://github.com/WebAssembly/memory64/issues/33
+-    maxMemorySetting = 1ULL << 34;
++    maxMemorySetting = 1ULL << 38;
+   }
+ 
+   if (ctx.arg.initialHeap != 0) {

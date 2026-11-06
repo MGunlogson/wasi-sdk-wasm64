@@ -370,6 +370,7 @@ function(define_libcxx_sub sysroot target target_suffix extra_target_flags extra
     ${CMAKE_SOURCE_DIR}/src/llvm-pr-168449.patch
     ${CMAKE_SOURCE_DIR}/src/llvm-pr-186054.patch
     ${CMAKE_SOURCE_DIR}/src/llvm-undo-part-of-194317.patch
+    ${CMAKE_SOURCE_DIR}/src/llvm-libunwind-wasm-no-exec-stack.patch
   )
   list(JOIN patches " " patches)
 

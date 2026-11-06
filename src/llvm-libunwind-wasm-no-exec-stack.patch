@@ -1,0 +1,14 @@
+diff --git a/libunwind/src/assembly.h b/libunwind/src/assembly.h
+index 84c9d52..2167326 100644
+--- a/libunwind/src/assembly.h
++++ b/libunwind/src/assembly.h
+@@ -253,6 +253,9 @@ aliasname:                                                                     \
+ #define WEAK_ALIAS(name, aliasname)
+ #define NO_EXEC_STACK_DIRECTIVE
+ 
++#elif defined(__wasm__)
++#define NO_EXEC_STACK_DIRECTIVE
++
+ // clang-format on
+ #else
+ 

@@ -223,6 +223,14 @@ endif()
 list(TRANSFORM tools PREPEND --target= OUTPUT_VARIABLE build_targets)
 list(TRANSFORM tools PREPEND --target=install- OUTPUT_VARIABLE install_targets)
 
+# Patches to the tools themselves, applied the way the sysroot applies its
+# runtime patches (`wasi-sdk-sysroot.cmake`): already-applied is detected and
+# accepted, anything else that does not apply stops the build.
+set(toolchain_patches
+  ${CMAKE_SOURCE_DIR}/src/llvm-wasm64-max-memory.patch
+)
+list(JOIN toolchain_patches " " toolchain_patches)
+
 ExternalProject_Add(llvm-build
   SOURCE_DIR "${llvm_proj_dir}/llvm"
   CMAKE_ARGS
@@ -266,6 +274,10 @@ ExternalProject_Add(llvm-build
   USES_TERMINAL_CONFIGURE ON
   USES_TERMINAL_BUILD ON
   USES_TERMINAL_INSTALL ON
+  USES_TERMINAL_PATCH ON
+  PATCH_COMMAND
+    ${CMAKE_COMMAND} -E chdir .. bash -c
+      "git apply ${toolchain_patches} || git apply ${toolchain_patches} -R --check"
 )
 
 add_custom_target(build ALL DEPENDS llvm-build)
