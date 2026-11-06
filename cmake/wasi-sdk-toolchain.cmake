@@ -6,6 +6,10 @@ set(RUST_TARGET "" CACHE STRING "Target to build Rust code for, if not the host"
 set(WASI_SDK_ARTIFACT "" CACHE STRING "Name of the wasi-sdk artifact being produced")
 
 option(WASI_SDK_LLDB "Include a build of LLDB" ON)
+option(WASI_SDK_CLANG_TOOLS_EXTRA
+  "Include clang-tidy and clang-apply-replacements (LLVM's clang-tools-extra)" ON)
+option(WASI_SDK_WASM_COMPONENT_LD
+  "Include wasm-component-ld, the linker the wasip2 and wasip3 targets need" ON)
 
 set(LIBEDIT_DEFAULT ON)
 # I don't want to deal with running a `./configure` script on Windows, disable
@@ -49,13 +53,11 @@ foreach(target IN LISTS WASI_SDK_TARGETS)
   list(APPEND links_to_create ${target}-clang++)
 endforeach()
 
-set(projects "lld;clang;clang-tools-extra")
+set(projects "lld;clang")
 
 set(tools
   clang
   clang-format
-  clang-tidy
-  clang-apply-replacements
   clang-scan-deps
   lld
   llvm-addr2line
@@ -76,6 +78,13 @@ set(tools
   c++filt
   llvm-config
   libclang)
+
+# clang-tidy alone is about a fifth of the CPU time of a full toolchain build,
+# and nothing that compiles or links needs it.
+if(WASI_SDK_CLANG_TOOLS_EXTRA)
+  list(APPEND projects clang-tools-extra)
+  list(APPEND tools clang-tidy clang-apply-replacements)
+endif()
 
 # By default link LLVM dynamically to all the various tools. This greatly
 # reduces the binary size of all the tools through a shared library rather than
@@ -268,25 +277,28 @@ install(DIRECTORY ${wasi_tmp_install}/bin ${wasi_tmp_install}/lib ${wasi_tmp_ins
         USE_SOURCE_PERMISSIONS
         DESTINATION ${CMAKE_INSTALL_PREFIX})
 
-# Build logic for `wasm-component-ld` installed from Rust code.
-set(wasm_component_ld_root ${CMAKE_CURRENT_BINARY_DIR}/wasm-component-ld)
-set(wasm_component_ld ${wasm_component_ld_root}/bin/wasm-component-ld${CMAKE_EXECUTABLE_SUFFIX})
-set(wasm_component_ld_version 0.5.30)
-if(RUST_TARGET)
-  set(rust_target_flag --target=${RUST_TARGET})
+# Build logic for `wasm-component-ld` installed from Rust code. Only the
+# component targets (wasip2, wasip3) link through it.
+if(WASI_SDK_WASM_COMPONENT_LD)
+  set(wasm_component_ld_root ${CMAKE_CURRENT_BINARY_DIR}/wasm-component-ld)
+  set(wasm_component_ld ${wasm_component_ld_root}/bin/wasm-component-ld${CMAKE_EXECUTABLE_SUFFIX})
+  set(wasm_component_ld_version 0.5.30)
+  if(RUST_TARGET)
+    set(rust_target_flag --target=${RUST_TARGET})
+  endif()
+  add_custom_command(
+    OUTPUT ${wasm_component_ld}
+    COMMAND
+      cargo install --root ${wasm_component_ld_root} ${rust_target_flag}
+        wasm-component-ld@${wasm_component_ld_version}
+    COMMAND
+      cmake -E make_directory ${wasi_tmp_install}/bin
+    COMMAND
+      cmake -E copy ${wasm_component_ld} ${wasi_tmp_install}/bin
+    COMMENT "Building `wasm-component-ld` ...")
+  add_custom_target(wasm-component-ld DEPENDS ${wasm_component_ld})
+  add_dependencies(build wasm-component-ld)
 endif()
-add_custom_command(
-  OUTPUT ${wasm_component_ld}
-  COMMAND
-    cargo install --root ${wasm_component_ld_root} ${rust_target_flag}
-      wasm-component-ld@${wasm_component_ld_version}
-  COMMAND
-    cmake -E make_directory ${wasi_tmp_install}/bin
-  COMMAND
-    cmake -E copy ${wasm_component_ld} ${wasi_tmp_install}/bin
-  COMMENT "Building `wasm-component-ld` ...")
-add_custom_target(wasm-component-ld DEPENDS ${wasm_component_ld})
-add_dependencies(build wasm-component-ld)
 
 # Setup installation logic for CMake support files.
 add_custom_target(misc-files)

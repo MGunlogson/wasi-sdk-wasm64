@@ -66,6 +66,13 @@ CMake flags are:
   LLVM/Clang.
 * `-DRUST_TARGET` - the specific Rust target triple to build `wasm-component-ld`
   for, useful for cross-compiles.
+* `-DWASI_SDK_LLDB=OFF` - leave out LLDB (and the libedit and libxml2 it
+  builds).
+* `-DWASI_SDK_CLANG_TOOLS_EXTRA=OFF` - leave out clang-tidy and
+  clang-apply-replacements.
+* `-DWASI_SDK_WASM_COMPONENT_LD=OFF` - leave out `wasm-component-ld`. The
+  wasip2 and wasip3 targets cannot link without it; the wasip1 targets do not
+  use it.
 
 The `clang` compiler should now be located at `build/install/bin/clang` but it's
 just a compiler, the sysroot isn't built yet. Next the second step of the build
