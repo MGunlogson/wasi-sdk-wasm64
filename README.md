@@ -144,6 +144,26 @@ The built package can be found into `build/dist` directory.
 For releasing a new version of the package on GitHub,
 see [RELEASING.md](RELEASING.md).
 
+### The wasm64 toolchain release
+
+This fork's `v*` tags publish a smaller package: the toolchain alone (clang,
+lld and the LLVM binutils, no sysroot) for x86_64 Linux, without LLDB,
+clang-tools-extra or `wasm-component-ld`, with the patches in `src/` applied.
+Build the sysroot for the wasm64 targets against it as in the second step
+above.
+
+```shell script
+./ci/wasm64-toolchain.sh build build/wasm64           # inside ci/docker's image in CI
+./ci/wasm64-toolchain.sh package build/wasm64 dist    # dist/wasm64-toolchain-x86_64-linux.tar.zst
+```
+
+`.github/workflows/wasm64-toolchain.yml` builds it twice, on separate runners,
+and publishes the release only if the two tarballs are byte-identical. The
+tarball holds `REVISION`, the commit it was built from; the release carries
+its sha256 and `build-env.txt`, the build image's package list. A
+`workflow_dispatch` run builds and compares without publishing, and gives the
+sha256 a tag on the same commit will publish.
+
 ## Install
 
 A typical installation from the release binaries might look like the following:

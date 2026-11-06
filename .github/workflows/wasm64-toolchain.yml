@@ -1,0 +1,158 @@
+name: wasm64 toolchain
+
+# The trimmed toolchain for the wasm64 targets (`ci/wasm64-toolchain.sh`),
+# built twice and released only if the two builds are byte-identical.
+#
+# - A `v*` tag builds, compares and publishes a release named after the tag,
+#   carrying the tarball, its sha256 and the package list of the build image.
+# - A dispatch builds and compares, and publishes nothing. The tarball does not
+#   depend on the ref it was built for, so a dispatch on the commit a tag will
+#   name gives the same sha256 the release will carry.
+#
+# x86_64 Linux only. Upstream's `main.yml` builds the full wasi-sdk for every
+# host; this builds what a wasm64 module build on x86_64 Linux needs.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.copy }}
+    runs-on: ubuntu-24.04
+    # A cold LLVM build on a 4-vCPU runner; the hosted maximum is 360.
+    timeout-minutes: 360
+    strategy:
+      matrix:
+        # Two independent builds of one commit, on separate runners, each in a
+        # freshly built image. `compare` requires the same bytes from both.
+        copy: [a, b]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # version.py runs `git describe`, which needs the history.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/checkout
+
+      # This repository carries none of upstream's release tags, and without a
+      # reachable `wasi-sdk-*` tag version.py fails during configure. The
+      # version names the dist tarballs, which this build does not make; the
+      # toolchain's files do not contain it.
+      - name: Fetch the wasi-sdk release tags
+        run: >-
+          git fetch --no-tags --no-recurse-submodules
+          https://github.com/WebAssembly/wasi-sdk.git
+          'refs/tags/wasi-sdk-*:refs/tags/wasi-sdk-*'
+
+      - name: Build the image
+        run: docker build --tag wasm64-toolchain-builder --file ci/docker/Dockerfile ci/docker
+
+      # What the image holds, published beside the tarball: the host compiler
+      # and libraries the toolchain was built with.
+      - name: Record the image
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          {
+            echo "# base image"
+            docker image inspect almalinux:8 --format '{{join .RepoDigests "\n"}}'
+            echo "# packages"
+            docker run --rm wasm64-toolchain-builder rpm -qa | sort
+          } > dist/build-env.txt
+          cat dist/build-env.txt
+
+      - name: Build the toolchain
+        run: >-
+          docker run --rm --init
+          --workdir /src --volume "$PWD:/src"
+          --user "$(id -u):$(id -g)"
+          wasm64-toolchain-builder
+          ci/wasm64-toolchain.sh build build/wasm64
+
+      - name: Package
+        run: ci/wasm64-toolchain.sh package build/wasm64 dist
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: toolchain-${{ matrix.copy }}
+          path: dist/
+          if-no-files-found: error
+
+  compare:
+    name: the two builds are byte-identical
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: toolchain-*
+
+      - name: Compare
+        run: |
+          set -euo pipefail
+          if ! cmp toolchain-a/build-env.txt toolchain-b/build-env.txt; then
+            echo "::error::the two builds ran in different images"
+            diff toolchain-a/build-env.txt toolchain-b/build-env.txt || true
+            exit 1
+          fi
+          cat toolchain-a/*.tar.zst.sha256 toolchain-b/*.tar.zst.sha256
+          for a in toolchain-a/*.tar.zst; do
+            b=toolchain-b/$(basename "$a")
+            if ! cmp "$a" "$b"; then
+              echo "::error::$(basename "$a") differs between the two builds"
+              mkdir -p x/a x/b
+              tar --zstd -xf "$a" -C x/a
+              tar --zstd -xf "$b" -C x/b
+              diff -r --brief --no-dereference x/a x/b || true
+              exit 1
+            fi
+          done
+          {
+            echo "Two builds, byte-identical:"
+            echo
+            echo '```'
+            cat toolchain-a/*.tar.zst.sha256
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: publish the release
+    needs: compare
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: toolchain-a
+          path: dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo "The toolchain for the wasm64-wasip1 and wasm64-wasip1-threads targets:"
+            echo "clang, lld and the LLVM binutils, built by \`ci/wasm64-toolchain.sh\` from"
+            echo "$GITHUB_SHA, without LLDB, clang-tools-extra or wasm-component-ld."
+            echo "Built twice on separate runners; the two tarballs were byte-identical."
+            echo "\`build-env.txt\` lists the build image's packages."
+            echo
+            echo '```'
+            cat dist/*.tar.zst.sha256
+            echo '```'
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            dist/*.tar.zst dist/*.tar.zst.sha256 dist/build-env.txt
