@@ -44,15 +44,17 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/checkout
 
-      # This repository carries none of upstream's release tags, and without a
-      # reachable `wasi-sdk-*` tag version.py fails during configure. The
+      # This repository carries few of upstream's release tags (and its
+      # `wasi-sdk-29` is a different object from upstream's, hence the forced
+      # refspec), and without a reachable `wasi-sdk-*` tag version.py fails
+      # during configure. The
       # version names the dist tarballs, which this build does not make; the
       # toolchain's files do not contain it.
       - name: Fetch the wasi-sdk release tags
         run: >-
           git fetch --no-tags --no-recurse-submodules
           https://github.com/WebAssembly/wasi-sdk.git
-          'refs/tags/wasi-sdk-*:refs/tags/wasi-sdk-*'
+          '+refs/tags/wasi-sdk-*:refs/tags/wasi-sdk-*'
 
       - name: Build the image
         run: docker build --tag wasm64-toolchain-builder --file ci/docker/Dockerfile ci/docker
