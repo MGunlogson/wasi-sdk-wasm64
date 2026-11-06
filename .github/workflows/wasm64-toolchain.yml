@@ -56,8 +56,13 @@ jobs:
           https://github.com/WebAssembly/wasi-sdk.git
           '+refs/tags/wasi-sdk-*:refs/tags/wasi-sdk-*'
 
+      # BuildKit resolves the base image without leaving it in the local image
+      # store, so pull it first: the build then uses it, and `Record the
+      # image` can read its digest.
       - name: Build the image
-        run: docker build --tag wasm64-toolchain-builder --file ci/docker/Dockerfile ci/docker
+        run: |
+          docker pull almalinux:8
+          docker build --tag wasm64-toolchain-builder --file ci/docker/Dockerfile ci/docker
 
       # What the image holds, published beside the tarball: the host compiler
       # and libraries the toolchain was built with.
