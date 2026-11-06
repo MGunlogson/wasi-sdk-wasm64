@@ -5,8 +5,10 @@ name: wasm64 toolchain
 #
 # - A `v*` tag builds, compares and publishes a release named after the tag,
 #   carrying the tarball, its sha256 and the package list of the build image.
-# - A dispatch builds and compares, and publishes nothing. The tarball does not
-#   depend on the ref it was built for, so a dispatch on the commit a tag will
+# - A push to a `wasm64-toolchain-*` branch, or a dispatch, builds and
+#   compares, and publishes nothing (a dispatch needs the workflow on the
+#   default branch; a branch push does not). The tarball does not
+#   depend on the ref it was built for, so a branch build of the commit a tag will
 #   name gives the same sha256 the release will carry.
 #
 # x86_64 Linux only. Upstream's `main.yml` builds the full wasi-sdk for every
@@ -16,6 +18,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'wasm64-toolchain-*'
   workflow_dispatch:
 
 permissions:
