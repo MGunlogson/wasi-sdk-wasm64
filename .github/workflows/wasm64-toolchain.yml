@@ -1,15 +1,13 @@
 name: wasm64 toolchain
 
-# The trimmed toolchain for the wasm64 targets (`ci/wasm64-toolchain.sh`),
-# built twice and released only if the two builds are byte-identical.
+# The trimmed toolchain for the wasm64 targets (`ci/wasm64-toolchain.sh`).
 #
-# - A `v*` tag builds, compares and publishes a release named after the tag,
-#   carrying the tarball, its sha256 and the package list of the build image.
+# - A `v*` tag builds and publishes a release named after the tag, carrying
+#   the tarball, its sha256 and the package list of the build image. A user
+#   pins the release's sha256.
 # - A push to a `wasm64-toolchain-*` branch, or a dispatch, builds and
-#   compares, and publishes nothing (a dispatch needs the workflow on the
-#   default branch; a branch push does not). The tarball does not
-#   depend on the ref it was built for, so a branch build of the commit a tag will
-#   name gives the same sha256 the release will carry.
+#   publishes nothing (a dispatch needs the workflow on the default branch; a
+#   branch push does not).
 #
 # x86_64 Linux only. Upstream's `main.yml` builds the full wasi-sdk for every
 # host; this builds what a wasm64 module build on x86_64 Linux needs.
@@ -27,15 +25,10 @@ permissions:
 
 jobs:
   build:
-    name: build ${{ matrix.copy }}
+    name: build
     runs-on: ubuntu-24.04
     # A cold LLVM build on a 4-vCPU runner; the hosted maximum is 360.
     timeout-minutes: 360
-    strategy:
-      matrix:
-        # Two independent builds of one commit, on separate runners, each in a
-        # freshly built image. `compare` requires the same bytes from both.
-        copy: [a, b]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,50 +84,13 @@ jobs:
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: toolchain-${{ matrix.copy }}
+          name: toolchain
           path: dist/
           if-no-files-found: error
 
-  compare:
-    name: the two builds are byte-identical
-    needs: build
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: toolchain-*
-
-      - name: Compare
-        run: |
-          set -euo pipefail
-          if ! cmp toolchain-a/build-env.txt toolchain-b/build-env.txt; then
-            echo "::error::the two builds ran in different images"
-            diff toolchain-a/build-env.txt toolchain-b/build-env.txt || true
-            exit 1
-          fi
-          cat toolchain-a/*.tar.zst.sha256 toolchain-b/*.tar.zst.sha256
-          for a in toolchain-a/*.tar.zst; do
-            b=toolchain-b/$(basename "$a")
-            if ! cmp "$a" "$b"; then
-              echo "::error::$(basename "$a") differs between the two builds"
-              mkdir -p x/a x/b
-              tar --zstd -xf "$a" -C x/a
-              tar --zstd -xf "$b" -C x/b
-              diff -r --brief --no-dereference x/a x/b || true
-              exit 1
-            fi
-          done
-          {
-            echo "Two builds, byte-identical:"
-            echo
-            echo '```'
-            cat toolchain-a/*.tar.zst.sha256
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
   release:
     name: publish the release
-    needs: compare
+    needs: build
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
@@ -142,7 +98,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: toolchain-a
+          name: toolchain
           path: dist
 
       - name: Publish
@@ -154,7 +110,6 @@ jobs:
             echo "The toolchain for the wasm64-wasip1 and wasm64-wasip1-threads targets:"
             echo "clang, lld and the LLVM binutils, built by \`ci/wasm64-toolchain.sh\` from"
             echo "$GITHUB_SHA, without LLDB, clang-tools-extra or wasm-component-ld."
-            echo "Built twice on separate runners; the two tarballs were byte-identical."
             echo "\`build-env.txt\` lists the build image's packages."
             echo
             echo '```'

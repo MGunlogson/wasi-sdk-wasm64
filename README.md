@@ -157,12 +157,11 @@ above.
 ./ci/wasm64-toolchain.sh package build/wasm64 dist    # dist/wasm64-toolchain-x86_64-linux.tar.zst
 ```
 
-`.github/workflows/wasm64-toolchain.yml` builds it twice, on separate runners,
-and publishes the release only if the two tarballs are byte-identical. The
-tarball holds `REVISION`, the commit it was built from; the release carries
-its sha256 and `build-env.txt`, the build image's package list. A
-`workflow_dispatch` run builds and compares without publishing, and gives the
-sha256 a tag on the same commit will publish.
+`.github/workflows/wasm64-toolchain.yml` builds it on a `v*` tag and
+publishes it as that tag's release. The tarball holds `REVISION`, the commit
+it was built from; the release carries its sha256 and `build-env.txt`, the
+build image's package list. A push to a `wasm64-toolchain-*` branch, or a
+`workflow_dispatch` run, builds without publishing.
 
 ## Install
 
